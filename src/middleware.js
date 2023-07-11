@@ -8,13 +8,13 @@ export default withAuth(
     const token = request.nextauth.token;
 
     // Only admin can access the admin page
-    if (pathname.startsWith("/extra") && token?.role !== "admin")
+    if (pathname.startsWith("/admin") && token?.role !== "admin")
       // The extra route will still display in the URL bar, but actually we will be on the denied page
       return NextResponse.rewrite(new URL("/denied", request.url));
 
     // Either admin or manager can access the admin page
     if (
-      pathname.startsWith("/client") &&
+      pathname.startsWith("/manager") &&
       token?.role !== "admin" &&
       token?.role !== "manager"
     )
@@ -27,4 +27,4 @@ export default withAuth(
   }
 );
 
-export const config = { matcher: ["/extra", "/client", "/dashboard"] };
+export const config = { matcher: ["/admin", "/manager", "/dashboard"] };

@@ -4,4 +4,6 @@ import { authOptions } from "./(config)/options";
 
 const handler = NextAuth(authOptions);
 
+// Fetch sessions & providers by GET Method
+// Pass credentials to logn by POST Method
 export { handler as GET, handler as POST };

@@ -33,3 +33,11 @@ code {
   word-spacing: 2px;
   max-width: 100%;
 }
+input:focus {
+  outline: none;
+}
+
+button:disabled {
+  opacity: 0.8;
+  cursor: not-allowed;
+}

@@ -1,7 +1,9 @@
 import CredentialsProvider from "next-auth/providers/credentials";
 import LinkedinProvider from "next-auth/providers/linkedin";
 import GitHubProvider from "next-auth/providers/github";
-import authenticateUser from "@/utils/authenticateUser";
+import connect from "@/connection/connect";
+import User from "@/models/User.model";
+import { compare } from "bcrypt";
 
 export const authOptions = {
   // Configure one or more authentication providers
@@ -9,8 +11,7 @@ export const authOptions = {
     LinkedinProvider({
       clientId: process.env.LINKEDIN_ID,
       clientSecret: process.env.LINKEDIN_SECRET,
-      profile(profile) {
-        console.log({ profile });
+      async profile(profile) {
         return {
           ...profile,
           role: profile.role ?? "user",
@@ -26,7 +27,6 @@ export const authOptions = {
       clientId: process.env.GITHUB_ID,
       clientSecret: process.env.GITHUB_SECRET,
       profile(profile) {
-        console.log({ profile });
         return {
           ...profile,
           role: profile.role ?? "user",
@@ -36,39 +36,85 @@ export const authOptions = {
       },
     }),
     CredentialsProvider({
+      id: "credentials",
       // The name to display on the sign in form (e.g. "Sign in with...")
       name: "Credentials",
-      // `credentials` is used to generate a form on the sign in page.
-      // You can specify which fields should be submitted, by adding keys to the `credentials` object.
-      // e.g. domain, username, password, 2FA token, etc.
-      // You can pass any HTML attribute to the <input> tag through the object.
-      credentials: {
-        username: {
-          label: "Username",
-          type: "text",
-          placeholder: "Enter your username",
-        },
-        password: {
-          label: "Password",
-          type: "password",
-          placeholder: "Enter your password",
-        },
-      },
       async authorize(credentials, req) {
-        // Add logic here to look up the user from the credentials supplied
-        return authenticateUser(credentials);
+        console.log(credentials);
+        //Check if the user exists.
+        await connect();
+
+        try {
+          const user = await User.findOne({
+            email: credentials.email,
+          });
+
+          if (user) {
+            const isPasswordCorrect = await compare(
+              credentials.password,
+              user.password
+            );
+
+            if (isPasswordCorrect) {
+              return user;
+            } else {
+              throw new Error("Wrong Credentials!");
+            }
+          } else {
+            throw new Error("User not found!");
+          }
+        } catch (err) {
+          throw new Error(err);
+        }
       },
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
-      console.log({ JWT: token, user });
-      if (user) token.role = user.role;
+    async jwt({ token, user, profile }) {
+      if (user) token.role = user?.role;
+      console.log({ user, profile, jwt: token });
       return token;
     },
-    session({ session, token }) {
-      session.user.role = token.role;
+    async session({ session }) {
+      // Get the data of the user every single time
+      const sessionUser = await User.findOne({
+        email: session.user.email,
+      });
+      // Auto-created id sent by google is updated by the auto-created ID through MongdoDB
+      session.user.id = sessionUser?._id.toString();
+      session.user.role = sessionUser?.role;
       return session;
     },
+    async signIn({ profile }) {
+      // When someone signs in with Google Auth, his profile will be passed to this function
+      // Then, we save the user to our database after adding some logic
+      try {
+        // Serverless => lambda => dynamodb
+        await connect();
+        // Check if a user already exists
+        const userExists = await User.findOne({
+          email: profile.email,
+        });
+        console.log({ SignInProfile: profile });
+        // If not => create a new user and save user in MongoDB
+        if (!userExists) {
+          await User.create({
+            name: profile?.name,
+            email: profile?.email,
+            image: profile?.picture,
+            password: "OAuth2",
+          });
+        }
+
+        return true;
+      } catch (error) {
+        console.log("Error checking if user exists: ", error.message);
+        return false;
+      }
+    },
+  },
+  pages: {
+    // Specify URLs to be used if you want to create custom sign in, sign out and error pages.
+    signIn: "/auth/login",
   },
 };
